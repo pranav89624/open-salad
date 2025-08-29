@@ -26,8 +26,14 @@
     }
     .panel{background:rgba(255,255,255,0.02); border-radius:10px; padding:12px; min-height:340px; display:flex; flex-direction:column;}
     .messages{flex:1; overflow:auto; padding:8px; display:flex; flex-direction:column; gap:8px;}
-    .msg{max-width:78%; padding:10px 12px; border-radius:10px; font-size:14px; line-height:1.2;}
+    .msg{max-width:78%; padding:10px 12px; border-radius:10px; font-size:14px; line-height:1.2; position:relative; transition:all 0.2s ease;}
+    .msg:hover{box-shadow:0 2px 8px rgba(0,0,0,0.2);}
     .msg .content{white-space: pre-wrap; word-wrap: break-word;}
+    .msg .copy-btn{position:absolute; top:8px; right:8px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; opacity:0; transition:opacity 0.2s ease; backdrop-filter:blur(4px);}
+    .msg:hover .copy-btn{opacity:1;}
+    .msg .copy-btn:hover{background:rgba(255,255,255,0.2); transform:scale(1.05);}
+    .msg .copy-btn:active{transform:scale(0.95);}
+    .copy-success{background:rgba(74,222,128,0.3) !important; border-color:rgba(74,222,128,0.6) !important;}
     .me{align-self:flex-end; background:linear-gradient(180deg,var(--me), #0e393f); color:#d7ffef;}
     .other{align-self:flex-start; background:linear-gradient(180deg,var(--other), #17222d); color:#dcecff;}
     .meta{font-size:12px; color:var(--muted); margin-top:6px;}
@@ -133,10 +139,59 @@
     function appendMessage(text, who, meta = '') {
       const div = document.createElement('div');
       div.className = 'msg ' + (who === 'me' ? 'me' : 'other');
-      div.innerHTML = `<div class="content">${escapeHtml(text)}</div>
-                       <div class="meta">${meta}</div>`;
+      
+      // Generate unique ID for this message
+      const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      
+      div.innerHTML = `
+        <button class="copy-btn" onclick="copyMessage('${messageId}')" title="Copy message">📋</button>
+        <div class="content" id="${messageId}">${escapeHtml(text)}</div>
+        <div class="meta">${meta}</div>
+      `;
+      
       messagesEl.appendChild(div);
       messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function copyMessage(messageId) {
+      const messageElement = document.getElementById(messageId);
+      if (!messageElement) return;
+      
+      const text = messageElement.textContent;
+      
+      // Copy to clipboard
+      navigator.clipboard.writeText(text).then(() => {
+        // Show success feedback
+        const copyBtn = messageElement.parentElement.querySelector('.copy-btn');
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = '✅';
+        copyBtn.classList.add('copy-success');
+        
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.classList.remove('copy-success');
+        }, 1500);
+      }).catch(err => {
+        console.error('Failed to copy text: ', err);
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        // Show success feedback
+        const copyBtn = messageElement.parentElement.querySelector('.copy-btn');
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = '✅';
+        copyBtn.classList.add('copy-success');
+        
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.classList.remove('copy-success');
+        }, 1500);
+      });
     }
 
     function escapeHtml(s){
