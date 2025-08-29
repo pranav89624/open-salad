@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Salad Room — Real-time Chat</title>
+  <style>
+    :root{
+      --bg:#0f1720; --card:#0b1220; --muted:#9aa4b2; --accent:#4ade80;
+      --me:#15303a; --other:#1b2330;
+    }
+    body{font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:linear-gradient(180deg,#071026 0%,#061526 100%); color:#e6eef6; margin:0; padding:20px; display:flex; justify-content:center;}
+    .container{width:960px; max-width:100%; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:18px; box-shadow:0 8px 30px rgba(2,6,23,0.6);}
+    header{display:flex; gap:12px; align-items:center; margin-bottom:12px;}
+    .status{font-size:13px; color:var(--muted);}
+    .status .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px; vertical-align:middle;}
+    .dot.connected{background:var(--accent);}
+    .dot.disconnected{background:#ef4444;}
+    .controls{display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;}
+    input[type=text]{padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:inherit; min-width:0;}
+    button{padding:8px 12px; border-radius:8px; border:none; cursor:pointer; background:linear-gradient(90deg,#0ea5a7,#06b6d4); color:#022; font-weight:600;}
+    .layout{display:grid; grid-template-columns:1fr 340px; gap:14px;}
+    @media (max-width: 768px) {
+      .layout{grid-template-columns:1fr; gap:10px;}
+      .controls{flex-direction:column;}
+    }
+    .panel{background:rgba(255,255,255,0.02); border-radius:10px; padding:12px; min-height:340px; display:flex; flex-direction:column;}
+    .messages{flex:1; overflow:auto; padding:8px; display:flex; flex-direction:column; gap:8px;}
+    .msg{max-width:78%; padding:10px 12px; border-radius:10px; font-size:14px; line-height:1.2;}
+    .msg .content{white-space: pre-wrap; word-wrap: break-word;}
+    .me{align-self:flex-end; background:linear-gradient(180deg,var(--me), #0e393f); color:#d7ffef;}
+    .other{align-self:flex-start; background:linear-gradient(180deg,var(--other), #17222d); color:#dcecff;}
+    .meta{font-size:12px; color:var(--muted); margin-top:6px;}
+    .right-col{display:flex; flex-direction:column; gap:10px;}
+    textarea{width:100%; min-height:100px; padding:10px; border-radius:8px; resize:vertical; background:transparent; border:1px solid rgba(255,255,255,0.03); color:inherit;}
+    footer{display:flex; gap:8px; margin-top:10px; align-items:center;}
+    small{color:var(--muted);}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h2 style="margin:0;font-size:18px">🥗 Salad Room — Real-time Chat</h2>
+      <div style="flex:1"></div>
+      <div class="status" id="status">
+        <span class="dot disconnected" id="dot"></span>
+        <span id="statustxt">disconnected</span>
+      </div>
+    </header>
+
+    <div class="controls">
+      <label style="display:flex;gap:8px;align-items:center">
+        <small style="color:var(--muted)">Room</small>
+        <input id="room" type="text" value="general" style="width:160px" />
+      </label>
+
+      <label style="display:flex;gap:8px;align-items:center">
+        <small style="color:var(--muted)">Your Name</small>
+        <input id="username" type="text" placeholder="Enter your name" style="width:160px" />
+      </label>
+
+      <button id="connectBtn">Join Chat</button>
+    </div>
+
+    <div class="layout">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <strong>Messages</strong>
+          <small id="peerInfo">Room: <span id="currentRoom">—</span></small>
+        </div>
+
+        <div class="messages" id="messages"></div>
+
+        <footer>
+          <textarea id="text" placeholder="Type your message... (Shift+Enter for new line)" rows="2"></textarea>
+          <button id="sendBtn">Send</button>
+        </footer>
+      </div>
+
+      <div class="right-col">
+        <div class="panel">
+          <strong>Connection Info</strong>
+          <div style="margin-top:10px;font-size:13px;color:var(--muted);">
+            <div><b>Your ID:</b> <span id="socketId">—</span></div>
+            <div style="margin-top:6px"><b>Name:</b> <span id="displayName">—</span></div>
+            <div style="margin-top:6px"><b>Room:</b> <span id="joinedRoom">—</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <strong>How to use</strong>
+          <ol style="margin:8px 0 0 18px;color:var(--muted);font-size:13px">
+            <li>Enter your name and room name</li>
+            <li>Click <b>Join Chat</b> to connect</li>
+            <li>Type messages and press <b>Send</b></li>
+            <li>Share the room name with friends!</li>
+            <li>New joiners will see chat history</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script>
+    let socket = null;
+    let myId = null;
+    let joinedRoom = null;
+    let username = null;
+
+    // Get current server URL (works both locally and on deployed server)
+    const currentUrl = new URL(window.location.href);
+    const serverUrl = `${currentUrl.protocol}//${currentUrl.host}`;
+
+    const statusDot = document.getElementById('dot');
+    const statusTxt = document.getElementById('statustxt');
+    const socketIdEl = document.getElementById('socketId');
+    const displayNameEl = document.getElementById('displayName');
+    const joinedRoomEl = document.getElementById('joinedRoom');
+    const currentRoomEl = document.getElementById('currentRoom');
+    const messagesEl = document.getElementById('messages');
+
+    function setStatus(connected){
+      if(connected){
+        statusDot.classList.remove('disconnected'); statusDot.classList.add('connected');
+        statusTxt.textContent = 'connected';
+      } else {
+        statusDot.classList.remove('connected'); statusDot.classList.add('disconnected');
+        statusTxt.textContent = 'disconnected';
+      }
+    }
+
+    function appendMessage(text, who, meta = '') {
+      const div = document.createElement('div');
+      div.className = 'msg ' + (who === 'me' ? 'me' : 'other');
+      div.innerHTML = `<div class="content">${escapeHtml(text)}</div>
+                       <div class="meta">${meta}</div>`;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function escapeHtml(s){
+      return (s+'').replace(/[&<>"']/g, (c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]);
+    }
+
+    document.getElementById('connectBtn').addEventListener('click', () => {
+      const room = document.getElementById('room').value.trim() || 'general';
+      const nameInput = document.getElementById('username').value.trim();
+      
+      if(!nameInput) {
+        alert('Please enter your name');
+        return;
+      }
+
+      username = nameInput;
+
+      // clean up existing socket if any
+      if(socket){
+        try { socket.disconnect(); } catch(e){}
+        socket = null;
+        setStatus(false);
+      }
+
+      // connect to current server
+      socket = io(serverUrl, { transports: ['websocket', 'polling'] });
+
+      socket.on('connect', () => {
+        myId = socket.id;
+        socketIdEl.textContent = myId;
+        displayNameEl.textContent = username;
+        setStatus(true);
+        
+        // join room
+        socket.emit('join', room);
+        joinedRoom = room;
+        joinedRoomEl.textContent = room;
+        currentRoomEl.textContent = room;
+        
+        // clear messages
+        messagesEl.innerHTML = '';
+        appendMessage(`Welcome to room "${room}"! You'll see chat history if there are any previous messages.`, 'other', 'System');
+      });
+
+      socket.on('disconnect', (reason) => {
+        setStatus(false);
+        console.warn('disconnected:', reason);
+      });
+
+      // incoming signaling / messages
+      socket.on('signal', (payload) => {
+        const isMine = payload && payload.senderId === myId;
+        const senderName = payload.senderName || payload.senderId || 'Unknown';
+        const meta = `${senderName} • ${new Date(payload.ts || Date.now()).toLocaleTimeString()}`;
+        appendMessage(payload && payload.msg ? payload.msg : JSON.stringify(payload), isMine ? 'me' : 'other', meta);
+      });
+
+      // incoming history
+      socket.on('history', (history) => {
+        console.log("📜 got history", history);
+        if(history.length > 0) {
+          appendMessage(`--- Chat History (${history.length} messages) ---`, 'other', 'System');
+        }
+        history.forEach(payload => {
+          const isMine = payload.senderId === myId;
+          const senderName = payload.senderName || payload.senderId || 'Unknown';
+          const meta = `${senderName} • ${new Date(payload.ts).toLocaleTimeString()}`;
+          appendMessage(payload.msg, isMine ? 'me' : 'other', meta);
+        });
+        if(history.length > 0) {
+          appendMessage(`--- End of History ---`, 'other', 'System');
+        }
+      });
+
+      // handle any errors
+      socket.on('connect_error', (err) => {
+        console.error('connect_error', err);
+        alert('Connection error: ' + (err && err.message ? err.message : err));
+      });
+    });
+
+    function sendMessage() {
+      const txt = document.getElementById('text').value.trim();
+      if(!socket || !socket.connected){
+        return alert('Not connected. Click "Join Chat" first.');
+      }
+      if(!txt) return;
+
+      const payload = {
+        msg: txt,
+        senderId: socket.id,
+        senderName: username,
+        ts: Date.now()
+      };
+
+      // show locally
+      appendMessage(txt, 'me', `You • ${new Date(payload.ts).toLocaleTimeString()}`);
+
+      // emit to room via signaling event
+      socket.emit('signal', { roomId: joinedRoom, payload });
+      
+      // clear input
+      document.getElementById('text').value = '';
+    }
+
+    document.getElementById('sendBtn').addEventListener('click', sendMessage);
+
+    // Send message on Enter (but not Shift+Enter for new lines)
+    document.getElementById('text').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+  </script>
+</body>
+</html>
