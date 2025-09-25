@@ -6,7 +6,7 @@ import { io, Socket } from 'socket.io-client';
 interface UseSocketReturn {
   socket: Socket | null;
   isConnected: boolean;
-  connect: (room: string) => void;
+  connect: (room: string) => Promise<void>;
   disconnect: () => void;
 }
 
@@ -14,34 +14,43 @@ export const useSocket = (): UseSocketReturn => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  const connect = (room: string) => {
+  const connect = async (room: string) => {
     if (socket) {
       socket.disconnect();
     }
 
-    const newSocket = io({
-      transports: ['websocket', 'polling'],
-    });
-
-    newSocket.on('connect', () => {
-      console.log('✅ Connected to server:', newSocket.id);
-      setIsConnected(true);
+    try {
+      // Initialize Socket.IO server by calling the API route
+      await fetch('/api/socket');
       
-      // Join the specified room
-      newSocket.emit('join', room);
-    });
+      // Connect to Socket.IO server
+      const newSocket = io({
+        path: '/api/socket',
+        transports: ['websocket', 'polling'],
+      });
 
-    newSocket.on('disconnect', (reason) => {
-      console.log('❌ Disconnected:', reason);
-      setIsConnected(false);
-    });
+      newSocket.on('connect', () => {
+        console.log('✅ Connected to server:', newSocket.id);
+        setIsConnected(true);
+        
+        // Join the specified room
+        newSocket.emit('join', room);
+      });
 
-    newSocket.on('connect_error', (error) => {
-      console.error('❌ Connection error:', error);
-      setIsConnected(false);
-    });
+      newSocket.on('disconnect', (reason) => {
+        console.log('❌ Disconnected:', reason);
+        setIsConnected(false);
+      });
 
-    setSocket(newSocket);
+      newSocket.on('connect_error', (error) => {
+        console.error('❌ Connection error:', error);
+        setIsConnected(false);
+      });
+
+      setSocket(newSocket);
+    } catch (error) {
+      console.error('❌ Failed to initialize Socket.IO:', error);
+    }
   };
 
   const disconnect = () => {
