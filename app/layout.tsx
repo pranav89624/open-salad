@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Baatein — Real-time Chat",
-  description: "Where conversations flow naturally. A modern real-time chat application built with Next.js and Socket.IO",
+  title: "Open Salad - Simple Chat App",
+  description: "A demonstration project showcasing Socket.IO integration with Next.js for real-time communication",
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
