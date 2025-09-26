@@ -63,7 +63,7 @@ app/
 - **Real-time**: Socket.IO
 - **Styling**: Tailwind CSS
 - **Storage**: In-memory (temporary)
-- **Deployment**: Vercel compatible frontend only socket.io not supported by vercel because of its serverless functions
+- **Deployment**: Vercel compatible (frontend only), socket.io not supported by vercel because of its serverless behavior
 - **Deployment to Render**: Socket.io works on Render
 
 ## 📚 What You Can Learn
